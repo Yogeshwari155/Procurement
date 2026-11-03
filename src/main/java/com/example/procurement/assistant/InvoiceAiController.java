@@ -1,13 +1,23 @@
 package com.example.procurement.assistant;
 
+import java.io.IOException;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/invoices")
 public class InvoiceAiController {
+
+    private static final String PROMPT = """
+        Extract details from this invoice. Reply with exactly these 4 lines and nothing else:
+        vendor: <vendor name>
+        invoicenumber: <invoice number>
+        amount: <total amount as a number only>
+        duedate: <due date in YYYY-MM-DD format>
+        """;
 
     private final GeminiService gemini;
     private final VendorRepository vendorRepository;
@@ -22,18 +32,17 @@ public class InvoiceAiController {
 
     @PostMapping("/extract")
     public Invoice extract(@RequestBody String invoiceText) {
-        String prompt = """
-            Extract details from this invoice text. Reply with exactly these 4 lines and nothing else:
-            vendor: <vendor name>
-            invoicenumber: <invoice number>
-            amount: <total amount as a number only>
-            duedate: <due date in YYYY-MM-DD format>
+        String aiText = gemini.ask(PROMPT + "\nInvoice text:\n" + invoiceText);
+        return saveFromAiText(aiText);
+    }
 
-            Invoice text:
-            """ + invoiceText;
+    @PostMapping("/upload")
+    public Invoice upload(@RequestParam("file") MultipartFile file) throws IOException {
+        String aiText = gemini.askWithFile(PROMPT, file.getBytes(), file.getContentType());
+        return saveFromAiText(aiText);
+    }
 
-        String aiText = gemini.ask(prompt);
-
+    private Invoice saveFromAiText(String aiText) {
         Map<String, String> fields = new HashMap<>();
         for (String line : aiText.split("\n")) {
             int i = line.indexOf(':');
